@@ -1,0 +1,11 @@
+.env
+records/
+models/
+__pycache__/
+**/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+.pytest_cache/
