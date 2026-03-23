@@ -3,8 +3,8 @@ import logging
 
 import httpx
 
-from config import settings
-from schemas import ReviewResult
+from .config import settings
+from .schemas import ReviewResult
 
 logger = logging.getLogger(__name__)
 

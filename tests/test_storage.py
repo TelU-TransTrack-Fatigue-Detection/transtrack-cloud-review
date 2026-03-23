@@ -5,8 +5,8 @@ import pytest
 from pathlib import Path
 from unittest.mock import patch
 
-from storage import save_record
-from config import settings
+from app.storage import save_record
+from app.config import settings
 
 
 SAMPLE_DATA = {

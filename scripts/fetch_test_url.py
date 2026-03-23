@@ -4,7 +4,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import requests
-from config import settings
+from app.config import settings
 
 
 def login() -> tuple[str, str]:

@@ -7,8 +7,8 @@ from unittest.mock import AsyncMock, patch
 
 from httpx import AsyncClient, ASGITransport
 
-from config import settings
-from main import app
+from app.config import settings
+from app.main import app
 
 INTEGRATION_RECORDS_DIR = "./records/integration"
 
@@ -53,7 +53,7 @@ def _print_video_info(video_info: dict):
 @pytest.mark.integration
 @pytest.mark.asyncio
 async def test_real_download_and_save():
-    with patch("main.post_result", new_callable=AsyncMock) as mock_post:
+    with patch("app.main.post_result", new_callable=AsyncMock) as mock_post:
         mock_post.return_value = None
 
         async with AsyncClient(
@@ -110,7 +110,7 @@ async def test_real_download_callback_payload_shape():
     async def capture_result(result):
         captured["result"] = result
 
-    with patch("main.post_result", side_effect=capture_result):
+    with patch("app.main.post_result", side_effect=capture_result):
         async with AsyncClient(
             transport=ASGITransport(app=app), base_url="http://test"
         ) as client:

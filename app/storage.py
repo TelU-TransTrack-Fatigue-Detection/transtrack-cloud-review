@@ -4,7 +4,7 @@ from pathlib import Path
 
 import aiofiles
 
-from config import settings
+from .config import settings
 
 
 async def save_record(alarm_id: str, imei: str, data: dict) -> Path:

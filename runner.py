@@ -10,7 +10,7 @@ import requests
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font
 
-from config import settings
+from app.config import settings
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)

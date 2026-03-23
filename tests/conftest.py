@@ -7,8 +7,8 @@ from unittest.mock import AsyncMock, patch
 
 from httpx import AsyncClient, ASGITransport
 
-from main import app
-from config import settings
+from app.main import app
+from app.config import settings
 
 
 ALWAYS_TRUE_INFERENCE = {
@@ -43,9 +43,9 @@ async def client_with_mocks(tmp_path, monkeypatch):
     monkeypatch.setattr(settings, "RECORDS_DIR", str(tmp_path / "records"))
 
     with (
-        patch("main.download_video", new_callable=AsyncMock) as mock_dl,
-        patch("main.run_inference", new_callable=AsyncMock) as mock_infer,
-        patch("main.post_result", new_callable=AsyncMock) as mock_post,
+        patch("app.main.download_video", new_callable=AsyncMock) as mock_dl,
+        patch("app.main.run_inference", new_callable=AsyncMock) as mock_infer,
+        patch("app.main.post_result", new_callable=AsyncMock) as mock_post,
     ):
         mock_dl.return_value = "/tmp/fake.mp4"
         mock_infer.return_value = ALWAYS_TRUE_INFERENCE

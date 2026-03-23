@@ -8,11 +8,11 @@ import httpx
 from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-from config import settings
-from inference import run_inference
-from notifier import post_result
-from schemas import IncomingAlarm, ReviewResult
-from storage import save_record
+from .config import settings
+from .inference import run_inference
+from .notifier import post_result
+from .schemas import IncomingAlarm, ReviewResult
+from .storage import save_record
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)

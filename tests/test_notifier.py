@@ -2,8 +2,8 @@ import pytest
 import httpx
 from unittest.mock import AsyncMock, patch, MagicMock
 
-from notifier import post_result
-from schemas import ReviewResult
+from app.notifier import post_result
+from app.schemas import ReviewResult
 
 SAMPLE_RESULT = ReviewResult(
     id="abc123",
@@ -24,7 +24,7 @@ async def test_post_result_sends_to_callback_url():
     mock_response = MagicMock()
     mock_response.raise_for_status = MagicMock()
 
-    with patch("notifier.httpx.AsyncClient") as mock_client_cls:
+    with patch("app.notifier.httpx.AsyncClient") as mock_client_cls:
         mock_client = AsyncMock()
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
@@ -35,7 +35,7 @@ async def test_post_result_sends_to_callback_url():
 
         mock_client.post.assert_called_once()
         call_url = mock_client.post.call_args[0][0]
-        from config import settings
+        from app.config import settings
         assert call_url == settings.CALLBACK_URL
 
 
@@ -44,7 +44,7 @@ async def test_post_result_payload_matches_schema():
     mock_response = MagicMock()
     mock_response.raise_for_status = MagicMock()
 
-    with patch("notifier.httpx.AsyncClient") as mock_client_cls:
+    with patch("app.notifier.httpx.AsyncClient") as mock_client_cls:
         mock_client = AsyncMock()
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
@@ -62,7 +62,7 @@ async def test_post_result_payload_matches_schema():
 
 @pytest.mark.asyncio
 async def test_post_result_retries_on_http_error():
-    with patch("notifier.httpx.AsyncClient") as mock_client_cls:
+    with patch("app.notifier.httpx.AsyncClient") as mock_client_cls:
         mock_client = AsyncMock()
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
@@ -71,7 +71,7 @@ async def test_post_result_retries_on_http_error():
         )
         mock_client_cls.return_value = mock_client
 
-        with patch("notifier.asyncio.sleep", new_callable=AsyncMock):
+        with patch("app.notifier.asyncio.sleep", new_callable=AsyncMock):
             with pytest.raises(RuntimeError, match="Callback failed"):
                 await post_result(SAMPLE_RESULT)
 
@@ -83,7 +83,7 @@ async def test_post_result_succeeds_on_second_attempt():
     mock_ok = MagicMock()
     mock_ok.raise_for_status = MagicMock()
 
-    with patch("notifier.httpx.AsyncClient") as mock_client_cls:
+    with patch("app.notifier.httpx.AsyncClient") as mock_client_cls:
         mock_client = AsyncMock()
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
@@ -92,7 +92,7 @@ async def test_post_result_succeeds_on_second_attempt():
         )
         mock_client_cls.return_value = mock_client
 
-        with patch("notifier.asyncio.sleep", new_callable=AsyncMock):
+        with patch("app.notifier.asyncio.sleep", new_callable=AsyncMock):
             await post_result(SAMPLE_RESULT)
 
         assert mock_client.post.call_count == 2
@@ -100,13 +100,13 @@ async def test_post_result_succeeds_on_second_attempt():
 
 @pytest.mark.asyncio
 async def test_post_result_raises_after_max_retries():
-    with patch("notifier.httpx.AsyncClient") as mock_client_cls:
+    with patch("app.notifier.httpx.AsyncClient") as mock_client_cls:
         mock_client = AsyncMock()
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
         mock_client.post = AsyncMock(side_effect=httpx.HTTPError("fail"))
         mock_client_cls.return_value = mock_client
 
-        with patch("notifier.asyncio.sleep", new_callable=AsyncMock):
+        with patch("app.notifier.asyncio.sleep", new_callable=AsyncMock):
             with pytest.raises(RuntimeError):
                 await post_result(SAMPLE_RESULT)

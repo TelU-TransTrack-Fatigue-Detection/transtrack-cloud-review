@@ -53,20 +53,20 @@ async def test_pipeline_callback_contains_original_fields(client_with_mocks):
 
 @pytest.mark.asyncio
 async def test_pipeline_saves_record_to_disk(tmp_path, monkeypatch):
-    from config import settings
+    from app.config import settings
     records_path = tmp_path / "records"
     monkeypatch.setattr(settings, "RECORDS_DIR", str(records_path))
 
     with (
-        patch("main.download_video", new_callable=AsyncMock) as mock_dl,
-        patch("main.run_inference", new_callable=AsyncMock) as mock_infer,
-        patch("main.post_result", new_callable=AsyncMock),
+        patch("app.main.download_video", new_callable=AsyncMock) as mock_dl,
+        patch("app.main.run_inference", new_callable=AsyncMock) as mock_infer,
+        patch("app.main.post_result", new_callable=AsyncMock),
     ):
         mock_dl.return_value = "/tmp/fake.mp4"
         mock_infer.return_value = ALWAYS_TRUE_INFERENCE
 
         from httpx import AsyncClient, ASGITransport
-        from main import app
+        from app.main import app
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
             await ac.post("/review", json=VALID_PAYLOAD, headers=VALID_HEADERS)
