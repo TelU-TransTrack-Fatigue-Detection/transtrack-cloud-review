@@ -11,8 +11,9 @@ FAKE_VIDEO_INFO = {
     "first_frame_read": True,
 }
 
-FAKE_DROWSY = {"label": "drowsy", "class_id": 1, "confidence": 0.85}
-FAKE_AWAKE  = {"label": "awake",  "class_id": 0, "confidence": 0.92}
+FAKE_DROWSY  = {"label": "yawning",     "class_id": 2, "confidence": 0.85}
+FAKE_AWAKE   = {"label": "normal",      "class_id": 1, "confidence": 0.92}
+FAKE_ASLEEP  = {"label": "eyes_closed", "class_id": 0, "confidence": 0.91}
 
 
 def _mock_video():
@@ -64,19 +65,27 @@ async def test_run_inference_video_info_included_in_other():
 
 
 @pytest.mark.asyncio
-async def test_run_inference_review_result_true_for_drowsy():
+async def test_run_inference_review_result_true_for_yawning():
     with _mock_video(), _mock_pipeline(FAKE_DROWSY):
-        result = await run_inference("/tmp/video.mp4", "eyes_closed")
+        result = await run_inference("/tmp/video.mp4", "yawning")
     assert result["review_result"] is True
-    assert result["other"]["label"] == "drowsy"
+    assert result["other"]["label"] == "yawning"
 
 
 @pytest.mark.asyncio
-async def test_run_inference_review_result_false_for_awake():
+async def test_run_inference_review_result_true_for_eyes_closed():
+    with _mock_video(), _mock_pipeline(FAKE_ASLEEP):
+        result = await run_inference("/tmp/video.mp4", "eyes_closed")
+    assert result["review_result"] is True
+    assert result["other"]["label"] == "eyes_closed"
+
+
+@pytest.mark.asyncio
+async def test_run_inference_review_result_false_for_normal():
     with _mock_video(), _mock_pipeline(FAKE_AWAKE):
         result = await run_inference("/tmp/video.mp4", "eyes_closed")
     assert result["review_result"] is False
-    assert result["other"]["label"] == "awake"
+    assert result["other"]["label"] == "normal"
 
 
 @pytest.mark.asyncio
