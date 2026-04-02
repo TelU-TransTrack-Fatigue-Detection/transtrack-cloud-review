@@ -1,0 +1,17 @@
+.env
+.git
+.pytest_cache
+__pycache__
+**/__pycache__
+*.pyc
+*.pyo
+records/
+output/
+models/**/*.pth
+models/**/*.task
+models/**/*.onnx
+models/**/*.pt
+data-test-*/
+initial-*/
+*.mp4
+*.xlsx

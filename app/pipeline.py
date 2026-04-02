@@ -43,7 +43,7 @@ _MODEL_3D    = np.array([
 
 SEQUENCE_LENGTH = 200
 LANDMARK_FPS    = 10.0
-CLASS_NAMES     = ["awake", "drowsy", "asleep"]
+CLASS_NAMES     = ["eyes_closed", "normal", "yawning"]
 _MASK_WINDOW    = 5
 _MASK_THRESH    = 1e-4
 
@@ -292,8 +292,14 @@ _MODEL_REGISTRY = {
     "MultiScaleTCN": MultiScaleTCN,
 }
 
+_model_cache: dict = {}
+
 
 def _load_model(model_path: Path, model_name: str, device: torch.device) -> nn.Module:
+    cache_key = str(model_path)
+    if cache_key in _model_cache:
+        return _model_cache[cache_key]
+
     if not model_path.exists():
         raise FileNotFoundError(f"Model weights not found: {model_path}")
     if model_name not in _MODEL_REGISTRY:
@@ -308,6 +314,7 @@ def _load_model(model_path: Path, model_name: str, device: torch.device) -> nn.M
     model = _MODEL_REGISTRY[model_name](num_classes=len(CLASS_NAMES))
     model.load_state_dict(state)
     model.to(device).eval()
+    _model_cache[cache_key] = model
     return model
 
 

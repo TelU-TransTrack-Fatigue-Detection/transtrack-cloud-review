@@ -17,6 +17,11 @@ class Settings(BaseSettings):
 
     MODEL_PATH: str = "models/classifier/best_val_f1.pth"
     MODEL_NAME: str = "MultiScaleTCN"
+    MODEL_DOWNLOAD_URL: str = ""
+
+    REDIS_URL: str = "redis://localhost:6379/0"
+    WORKER_CONCURRENCY: int = 0
+    MAX_QUEUE_SIZE: int = 5000
 
 
 settings = Settings()

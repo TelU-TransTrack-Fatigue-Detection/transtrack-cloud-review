@@ -32,10 +32,12 @@ VALID_HEADERS = {"Authorization": f"Bearer {settings.API_KEY}"}
 @pytest_asyncio.fixture
 async def client(tmp_path, monkeypatch):
     monkeypatch.setattr(settings, "RECORDS_DIR", str(tmp_path / "records"))
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as ac:
-        yield ac
+    with patch("app.main.process_alarm_task") as mock_task:
+        mock_task.delay.return_value = None
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as ac:
+            yield ac
 
 
 @pytest_asyncio.fixture
@@ -51,10 +53,19 @@ async def client_with_mocks(tmp_path, monkeypatch):
         mock_infer.return_value = ALWAYS_TRUE_INFERENCE
         mock_post.return_value = None
 
-        async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test"
-        ) as ac:
-            yield ac, mock_dl, mock_infer, mock_post
+        async def _run_process_alarm(payload_dict):
+            from app.main import process_alarm
+            from app.schemas import IncomingAlarm
+            await process_alarm(IncomingAlarm(**payload_dict))
+
+        with patch("app.main.process_alarm_task") as mock_task:
+            mock_task.delay.side_effect = lambda pd: asyncio.create_task(
+                _run_process_alarm(pd)
+            )
+            async with AsyncClient(
+                transport=ASGITransport(app=app), base_url="http://test"
+            ) as ac:
+                yield ac, mock_dl, mock_infer, mock_post
 
 
 @pytest.fixture

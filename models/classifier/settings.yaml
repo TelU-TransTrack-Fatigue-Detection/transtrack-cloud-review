@@ -1,0 +1,45 @@
+execution:
+  command: train
+model:
+  landmark_model_name: MultiScaleTCN
+  image_model_name: SpatialCNN
+  fusion_model_name: FusionAttentionModel
+  input_channels: 8
+  num_classes: 3
+  sequence_length: 200
+  face_crop_size: 128
+  dropout: 0.3
+training:
+  run_name: week5_MultiScaleTCN
+  mode: landmark
+  batch_size: 32
+  epochs: 200
+  learning_rate: 0.0001
+  weight_decay: 0.001
+  num_workers: 12
+  seed: 21
+  label_smoothing: 0.1
+  early_stopping_patience: 50
+  gradient_clip: 1.0
+  device: cuda
+extraction:
+  input_dir: dataset
+  output_dir: data_20
+  landmark_fps: 10.0
+  face_crop_ratio: 10
+  num_workers: 12
+data:
+  input_dir: data_20
+  companies:
+  - BIB
+  - SIS
+  - PAMA MTBU
+  train_range:
+  - 0.0
+  - 1.0
+  test_size: 1.0
+  eval_data: test
+  load_memory: true
+  preload_device: cpu
+  val_ratio: 0.2
+  output_path: runs

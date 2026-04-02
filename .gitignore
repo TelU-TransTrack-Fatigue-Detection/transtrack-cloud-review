@@ -1,5 +1,6 @@
 .env
 records/
+data-test-*/
 models/**/*.task
 models/**/*.pt
 models/**/*.pth

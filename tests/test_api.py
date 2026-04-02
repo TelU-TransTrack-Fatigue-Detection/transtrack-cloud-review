@@ -61,3 +61,10 @@ async def test_extra_fields_are_accepted(client_with_mocks):
 async def test_get_method_not_allowed(client):
     resp = await client.get("/review", headers=VALID_HEADERS)
     assert resp.status_code == 405
+
+
+@pytest.mark.asyncio
+async def test_review_returns_503_when_queue_full(client):
+    with patch("app.main._queue_depth", return_value=5001):
+        resp = await client.post("/review", json=VALID_PAYLOAD, headers=VALID_HEADERS)
+    assert resp.status_code == 503

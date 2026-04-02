@@ -10,9 +10,11 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from .config import settings
 from .inference import run_inference
+from .model_manager import ensure_all_models
 from .notifier import post_result
 from .schemas import IncomingAlarm, ReviewResult
 from .storage import save_record
+from .worker import process_alarm_task
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -24,6 +26,15 @@ _bearer = HTTPBearer()
 def verify_api_key(credentials: HTTPAuthorizationCredentials = Depends(_bearer)):
     if credentials.credentials != settings.API_KEY:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API key")
+
+
+def _queue_depth() -> int:
+    try:
+        import redis as redis_lib
+        r = redis_lib.from_url(settings.REDIS_URL)
+        return r.llen("celery")
+    except Exception:
+        return 0
 
 
 async def cleanup_loop():
@@ -44,7 +55,10 @@ async def cleanup_loop():
 async def lifespan(app: FastAPI):
     Path(settings.RECORDS_DIR).mkdir(parents=True, exist_ok=True)
     Path(settings.RECORDS_DIR, "tmp").mkdir(parents=True, exist_ok=True)
-    logger.info("Records directory ready: %s", settings.RECORDS_DIR)
+    try:
+        ensure_all_models(Path(settings.MODEL_PATH), settings.MODEL_DOWNLOAD_URL)
+    except FileNotFoundError as e:
+        logger.warning("Model not ready at startup: %s", e)
     task = asyncio.create_task(cleanup_loop())
     yield
     task.cancel()
@@ -56,10 +70,12 @@ app = FastAPI(title="TransTRACK Cloud Review Engine", lifespan=lifespan)
 @app.post("/review", status_code=status.HTTP_202_ACCEPTED)
 async def review(
     payload: IncomingAlarm,
-    background_tasks: BackgroundTasks,
     _: None = Depends(verify_api_key),
 ):
-    background_tasks.add_task(process_alarm, payload)
+    if _queue_depth() >= settings.MAX_QUEUE_SIZE:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                            detail="Queue is full, try again later")
+    process_alarm_task.delay(payload.model_dump())
     return {"status": "queued", "id": payload.id}
 
 
@@ -70,7 +86,7 @@ async def process_alarm(payload: IncomingAlarm) -> None:
 
     try:
         video_path = await download_video(payload.dms_video_url, payload.id)
-        inference = await run_inference(video_path, payload.alarm)
+        inference  = await run_inference(video_path, payload.alarm)
 
         process_duration = int((time.monotonic() - start) * 1000)
         result = ReviewResult(
@@ -92,11 +108,6 @@ async def process_alarm(payload: IncomingAlarm) -> None:
             post_result(result),
         )
 
-        logger.info(
-            "Done id=%s confidence=%d review_result=%s duration_ms=%d",
-            payload.id, result.confidence_level, result.review_result, process_duration,
-        )
-
     except Exception as exc:
         logger.error("Failed to process alarm id=%s: %s", payload.id, exc, exc_info=True)
 
@@ -109,7 +120,7 @@ async def process_alarm(payload: IncomingAlarm) -> None:
 
 
 async def download_video(url: str, alarm_id: str) -> str:
-    tmp_dir = Path(settings.RECORDS_DIR) / "tmp"
+    tmp_dir    = Path(settings.RECORDS_DIR) / "tmp"
     video_path = tmp_dir / f"{alarm_id}.mp4"
 
     async with httpx.AsyncClient(timeout=settings.VIDEO_DOWNLOAD_TIMEOUT) as client:

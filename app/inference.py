@@ -68,7 +68,7 @@ async def run_inference(video_path: str, alarm: str) -> dict:
     prediction = await loop.run_in_executor(_executor, _run_pipeline, video_path)
 
     confidence_level = int(prediction["confidence"] * 100)
-    review_result = prediction["label"] != "awake"
+    review_result = prediction["label"] != "normal"
 
     return {
         "video_url_after_process": video_path,
