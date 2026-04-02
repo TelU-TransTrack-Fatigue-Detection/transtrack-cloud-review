@@ -1,6 +1,9 @@
 .env
 records/
-models/
+models/**/*.task
+models/**/*.pt
+models/**/*.pth
+models/**/*.onnx
 __pycache__/
 **/__pycache__/
 *.pyc
@@ -9,3 +12,6 @@ __pycache__/
 .venv/
 venv/
 .pytest_cache/
+.claude/
+output/
+document/

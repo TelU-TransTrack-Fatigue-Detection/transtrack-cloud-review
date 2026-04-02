@@ -15,5 +15,8 @@ class Settings(BaseSettings):
     TRANSTRACK_USERNAME: str = ""
     TRANSTRACK_PASSWORD: str = ""
 
+    MODEL_PATH: str = "models/classifier/best_val_f1.pth"
+    MODEL_NAME: str = "MultiScaleTCN"
+
 
 settings = Settings()
