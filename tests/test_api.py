@@ -21,6 +21,13 @@ async def test_review_returns_queued_status(client_with_mocks):
 
 
 @pytest.mark.asyncio
+async def test_review_response_body_has_exactly_two_keys(client_with_mocks):
+    client, *_ = client_with_mocks
+    resp = await client.post("/review", json=VALID_PAYLOAD, headers=VALID_HEADERS)
+    assert set(resp.json().keys()) == {"status", "id"}
+
+
+@pytest.mark.asyncio
 async def test_missing_auth_returns_401(client):
     resp = await client.post("/review", json=VALID_PAYLOAD)
     assert resp.status_code == 401
@@ -33,11 +40,34 @@ async def test_wrong_api_key_returns_401(client):
     )
     assert resp.status_code == 401
 
+@pytest.mark.asyncio
+async def test_empty_bearer_returns_401(client):
+    resp = await client.post(
+        "/review", json=VALID_PAYLOAD, headers={"Authorization": "Bearer "}
+    )
+    assert resp.status_code == 401
+
 
 @pytest.mark.asyncio
-async def test_missing_required_field_returns_422(client_with_mocks):
+async def test_missing_required_field_dms_video_url_returns_422(client_with_mocks):
     client, *_ = client_with_mocks
     payload = {k: v for k, v in VALID_PAYLOAD.items() if k != "dms_video_url"}
+    resp = await client.post("/review", json=payload, headers=VALID_HEADERS)
+    assert resp.status_code == 422
+ 
+ 
+@pytest.mark.asyncio
+async def test_missing_required_field_id_returns_422(client_with_mocks):
+    client, *_ = client_with_mocks
+    payload = {k: v for k, v in VALID_PAYLOAD.items() if k != "id"}
+    resp = await client.post("/review", json=payload, headers=VALID_HEADERS)
+    assert resp.status_code == 422
+ 
+ 
+@pytest.mark.asyncio
+async def test_missing_required_field_imei_returns_422(client_with_mocks):
+    client, *_ = client_with_mocks
+    payload = {k: v for k, v in VALID_PAYLOAD.items() if k != "imei"}
     resp = await client.post("/review", json=payload, headers=VALID_HEADERS)
     assert resp.status_code == 422
 
@@ -56,6 +86,17 @@ async def test_extra_fields_are_accepted(client_with_mocks):
     resp = await client.post("/review", json=payload, headers=VALID_HEADERS)
     assert resp.status_code == 202
 
+
+@pytest.mark.asyncio
+async def test_non_json_body_returns_422(client_with_mocks):
+    client, *_ = client_with_mocks
+    resp = await client.post(
+        "/review",
+        content="plain text",
+        headers={**VALID_HEADERS, "Content-Type": "text/plain"},
+    )
+    assert resp.status_code == 422
+ 
 
 @pytest.mark.asyncio
 async def test_get_method_not_allowed(client):

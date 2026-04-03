@@ -1,9 +1,10 @@
 import asyncio
 import json
+import numpy as np  
 import pytest
 import pytest_asyncio
 from pathlib import Path
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, patch, MagicMock
 
 from httpx import AsyncClient, ASGITransport
 
@@ -73,3 +74,55 @@ def records_dir(tmp_path):
     d = tmp_path / "records"
     d.mkdir()
     return d
+
+# ─── Minimal Synthetic Video ─────────────────────────────────────────────────
+ 
+@pytest.fixture
+def synthetic_video(tmp_path):
+    """Creates a minimal valid MP4-like file using OpenCV."""
+    import cv2
+    path = tmp_path / "test_video.mp4"
+    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+    out = cv2.VideoWriter(str(path), fourcc, 30.0, (320, 240))
+    for _ in range(90):  # 3 seconds @ 30fps
+        frame = np.zeros((240, 320, 3), dtype=np.uint8)
+        out.write(frame)
+    out.release()
+    return path
+ 
+ 
+@pytest.fixture
+def black_video(tmp_path):
+    """Black frames — no face detected."""
+    import cv2
+    path = tmp_path / "black_video.mp4"
+    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+    out = cv2.VideoWriter(str(path), fourcc, 10.0, (320, 240))
+    for _ in range(30):
+        out.write(np.zeros((240, 320, 3), dtype=np.uint8))
+    out.release()
+    return path
+ 
+ 
+# ─── Mock Landmarks ──────────────────────────────────────────────────────────
+ 
+def make_mock_landmark(x=0.5, y=0.5, z=0.0):
+    lm = MagicMock()
+    lm.x = x
+    lm.y = y
+    lm.z = z
+    return lm
+ 
+ 
+def make_face_landmarks(n=478):
+    """Return a list of n mock landmarks at neutral positions."""
+    lms = [make_mock_landmark(0.5, 0.5, 0.0) for _ in range(n)]
+    # Give eye landmarks non-zero spread so EAR > 0
+    eye_indices = [33, 159, 158, 133, 153, 144, 263, 386, 385, 362, 380, 373]
+    for i, idx in enumerate(eye_indices):
+        lms[idx] = make_mock_landmark(0.4 + i * 0.01, 0.5 + (i % 2) * 0.02)
+    # Mouth
+    mouth_indices = [13, 14, 61, 291]
+    for i, idx in enumerate(mouth_indices):
+        lms[idx] = make_mock_landmark(0.5, 0.4 + i * 0.05)
+    return lms
