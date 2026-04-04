@@ -10,9 +10,10 @@ __pycache__/
 *.pyc
 *.pyo
 *.pyd
-.venv/
-venv/
 .pytest_cache/
 .claude/
 output/
 document/
+tests/
+test_inference.py
+.venv/
