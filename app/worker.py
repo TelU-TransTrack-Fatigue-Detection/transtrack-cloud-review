@@ -26,7 +26,7 @@ celery_app.conf.update(
     broker_transport_options={"visibility_timeout": 3600},
 )
 
-_model  = None
+_model = None
 _device = None
 
 
@@ -38,7 +38,7 @@ def _init_worker(**kwargs):
 
     ensure_all_models(Path(settings.MODEL_PATH), settings.MODEL_DOWNLOAD_URL)
     _device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    _model  = _load_model(Path(settings.MODEL_PATH), settings.MODEL_NAME, _device)
+    _model = _load_model(Path(settings.MODEL_PATH), settings.MODEL_NAME, _device)
     logger.info("Worker process ready — model on %s", _device)
 
 
@@ -47,12 +47,12 @@ def process_alarm_task(self, payload_dict: dict):
     from .pipeline import _extract, _prepare, CLASS_NAMES
     from .schemas import IncomingAlarm, ReviewResult
 
-    payload    = IncomingAlarm(**payload_dict)
-    start      = time.monotonic()
+    payload = IncomingAlarm(**payload_dict)
+    start = time.monotonic()
     video_path = None
 
     try:
-        tmp_dir    = Path(settings.RECORDS_DIR) / "tmp"
+        tmp_dir = Path(settings.RECORDS_DIR) / "tmp"
         tmp_dir.mkdir(parents=True, exist_ok=True)
         video_path = tmp_dir / f"{payload.id}.mp4"
 
@@ -64,19 +64,19 @@ def process_alarm_task(self, payload_dict: dict):
                         f.write(chunk)
 
         device = _device or torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        model  = _model
+        model = _model
         if model is None:
             from .pipeline import _load_model
             model = _load_model(Path(settings.MODEL_PATH), settings.MODEL_NAME, device)
 
         features = _extract(video_path)
-        tensor   = _prepare(features).to(device)
+        tensor = _prepare(features).to(device)
 
         with torch.no_grad():
-            probs     = F.softmax(model(tensor), dim=-1)
+            probs = F.softmax(model(tensor), dim=-1)
             conf, cls = torch.max(probs, dim=-1)
 
-        label    = CLASS_NAMES[cls.item()]
+        label = CLASS_NAMES[cls.item()]
         conf_val = round(conf.item(), 4)
         duration = int((time.monotonic() - start) * 1000)
 
@@ -86,7 +86,7 @@ def process_alarm_task(self, payload_dict: dict):
             time=payload.time,
             alarm=payload.alarm,
             dms_video_url=payload.dms_video_url,
-            dms_video_url_after_proccess=str(video_path),
+            dms_video_url_after_proccess="-",
             confidence_level=int(conf_val * 100),
             review_result=(label != "normal"),
             process_duration=duration,
@@ -95,29 +95,34 @@ def process_alarm_task(self, payload_dict: dict):
 
         records_dir = Path(settings.RECORDS_DIR)
         records_dir.mkdir(parents=True, exist_ok=True)
-        ts    = int(time.time() * 1000)
+        ts = int(time.time() * 1000)
         fname = f"{payload.id}_{payload.imei}_{ts}.json"
         (records_dir / fname).write_text(
             json.dumps({"original": payload.model_dump(), "result": result.model_dump()})
         )
 
+        last_exc = None
         for attempt in range(3):
             try:
                 with httpx.Client(timeout=settings.HTTPX_TIMEOUT) as cb_client:
                     r = cb_client.post(settings.CALLBACK_URL, json=result.model_dump())
                     r.raise_for_status()
-                break
+                    logger.info("Callback delivered id=%s (attempt %d)", payload.id, attempt + 1)
+                    last_exc = None
+                    break
             except Exception as exc:
-                if attempt == 2:
-                    logger.error("Callback failed after 3 attempts: %s", exc)
-                else:
+                last_exc = exc
+                if attempt < 2:
                     time.sleep(2 ** attempt)
+
+        if last_exc:
+            logger.error("Callback failed after 3 attempts id=%s: %s", payload.id, last_exc)
 
         logger.info("Done id=%s label=%s conf=%.4f duration_ms=%d",
                     payload.id, label, conf_val, duration)
 
     except Exception as exc:
-        logger.error("Task failed alarm=%s: %s", payload.id, exc)
+        logger.error("Task failed id=%s: %s", payload.id, exc, exc_info=True)
         raise self.retry(exc=exc)
 
     finally:

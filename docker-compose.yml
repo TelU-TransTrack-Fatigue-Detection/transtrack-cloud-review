@@ -6,6 +6,11 @@ services:
       - "6379:6379"
     volumes:
       - redis_data:/data
+    command: >
+      redis-server
+      --maxmemory 256mb
+      --maxmemory-policy noeviction
+      --save ""
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -27,6 +32,17 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+    mem_limit: 512m
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
 
   worker:
     build: .
@@ -34,8 +50,10 @@ services:
     command: >
       celery -A app.worker.celery_app worker
       --loglevel=info
-      --concurrency=${WORKER_CONCURRENCY:-0}
+      --pool=prefork
+      --concurrency=${WORKER_CONCURRENCY:-2}
       --max-tasks-per-child=50
+      -Q celery
     env_file: .env
     environment:
       REDIS_URL: redis://redis:6379/0
@@ -46,6 +64,17 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "celery", "-A", "app.worker.celery_app", "inspect", "ping", "--timeout", "5"]
+      interval: 30s
+      timeout: 10s
+      start_period: 60s
+      retries: 3
+    mem_limit: 2g
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
 
 volumes:
   redis_data:

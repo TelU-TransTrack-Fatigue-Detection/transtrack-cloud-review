@@ -63,15 +63,28 @@ output/             Runner Excel output — gitignored
 
 ## Setup
 
-**Requirements**: Python 3.11, CUDA-compatible GPU (tested on RTX 4050)
+**Requirements**: Python 3.11, CUDA-compatible GPU recommended (tested on RTX 4050)
 
+**Quick setup (recommended):**
 ```bash
-conda create -n transtrack_api python=3.11
-conda activate transtrack_api
+# Windows
+setup_env.bat
+
+# Linux / Mac
+bash setup_env.sh
+```
+
+The script creates a new conda env `transtrack_review`, asks if you have a GPU, and installs everything automatically.
+
+**Manual setup:**
+```bash
+conda create -n transtrack_review python=3.11
+conda activate transtrack_review
 
 pip install -r requirements.txt
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
-pip install mediapipe
+pip install -r requirements-torch-gpu.txt   # GPU (CUDA 12.1)
+# pip install -r requirements-torch-cpu.txt # CPU only
+pip install -r requirements-dev.txt         # for running tests
 ```
 
 Copy and fill in `.env`:

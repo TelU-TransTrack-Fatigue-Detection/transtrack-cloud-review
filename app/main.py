@@ -4,40 +4,20 @@ import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-import httpx
-from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, status
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from fastapi import FastAPI, HTTPException, status
 
 from .config import settings
-from .inference import run_inference
 from .model_manager import ensure_all_models
-from .notifier import post_result
-from .schemas import IncomingAlarm, ReviewResult
-from .storage import save_record
+from .schemas import IncomingAlarm
 from .worker import process_alarm_task
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
 
 _RECORD_TTL_SECONDS = 30 * 60
-_bearer = HTTPBearer()
 
 
-def verify_api_key(credentials: HTTPAuthorizationCredentials = Depends(_bearer)):
-    if credentials.credentials != settings.API_KEY:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API key")
-
-
-def _queue_depth() -> int:
-    try:
-        import redis as redis_lib
-        r = redis_lib.from_url(settings.REDIS_URL)
-        return r.llen("celery")
-    except Exception:
-        return 0
-
-
-async def cleanup_loop():
+async def _cleanup_loop():
     while True:
         await asyncio.sleep(60)
         now = time.time()
@@ -59,7 +39,7 @@ async def lifespan(app: FastAPI):
         ensure_all_models(Path(settings.MODEL_PATH), settings.MODEL_DOWNLOAD_URL)
     except FileNotFoundError as e:
         logger.warning("Model not ready at startup: %s", e)
-    task = asyncio.create_task(cleanup_loop())
+    task = asyncio.create_task(_cleanup_loop())
     yield
     task.cancel()
 
@@ -67,68 +47,27 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="TransTRACK Cloud Review Engine", lifespan=lifespan)
 
 
-@app.post("/review", status_code=status.HTTP_202_ACCEPTED)
-async def review(
-    payload: IncomingAlarm,
-    _: None = Depends(verify_api_key),
-):
-    if _queue_depth() >= settings.MAX_QUEUE_SIZE:
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                            detail="Queue is full, try again later")
-    process_alarm_task.delay(payload.model_dump())
-    return {"status": "queued", "id": payload.id}
-
-
-async def process_alarm(payload: IncomingAlarm) -> None:
-    logger.info("Processing alarm id=%s alarm=%s", payload.id, payload.alarm)
-    start = time.monotonic()
-    video_path: str | None = None
-
+def _queue_depth() -> int:
     try:
-        video_path = await download_video(payload.dms_video_url, payload.id)
-        inference  = await run_inference(video_path, payload.alarm)
+        import redis as redis_lib
+        r = redis_lib.from_url(settings.REDIS_URL)
+        return r.llen("celery")
+    except Exception:
+        return 0
 
-        process_duration = int((time.monotonic() - start) * 1000)
-        result = ReviewResult(
-            id=payload.id,
-            imei=payload.imei,
-            time=payload.time,
-            alarm=payload.alarm,
-            dms_video_url=payload.dms_video_url,
-            dms_video_url_after_proccess=inference["video_url_after_process"],
-            confidence_level=inference["confidence_level"],
-            review_result=inference["review_result"],
-            process_duration=process_duration,
-            other=inference.get("other", {}),
+
+@app.get("/health", status_code=status.HTTP_200_OK)
+async def health():
+    return {"status": "ok", "queue_depth": _queue_depth()}
+
+
+@app.post("/review", status_code=status.HTTP_202_ACCEPTED)
+async def review(payload: IncomingAlarm):
+    if _queue_depth() >= settings.MAX_QUEUE_SIZE:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Queue is full, try again later",
         )
-
-        record = {"original": payload.model_dump(), "result": result.model_dump()}
-        await asyncio.gather(
-            save_record(payload.id, payload.imei, record),
-            post_result(result),
-        )
-
-    except Exception as exc:
-        logger.error("Failed to process alarm id=%s: %s", payload.id, exc, exc_info=True)
-
-    finally:
-        if video_path and not settings.KEEP_TMP_VIDEOS:
-            try:
-                Path(video_path).unlink(missing_ok=True)
-            except Exception:
-                pass
-
-
-async def download_video(url: str, alarm_id: str) -> str:
-    tmp_dir    = Path(settings.RECORDS_DIR) / "tmp"
-    video_path = tmp_dir / f"{alarm_id}.mp4"
-
-    async with httpx.AsyncClient(timeout=settings.VIDEO_DOWNLOAD_TIMEOUT) as client:
-        async with client.stream("GET", url) as response:
-            response.raise_for_status()
-            with open(video_path, "wb") as f:
-                async for chunk in response.aiter_bytes(chunk_size=1024 * 64):
-                    f.write(chunk)
-
-    logger.info("Downloaded video to %s", video_path)
-    return str(video_path)
+    process_alarm_task.delay(payload.model_dump())
+    logger.info("Queued alarm id=%s alarm=%s", payload.id, payload.alarm)
+    return {"status": "queued", "id": payload.id}
