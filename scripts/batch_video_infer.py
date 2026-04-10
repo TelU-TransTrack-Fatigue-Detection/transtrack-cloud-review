@@ -67,30 +67,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("batch_infer")
 
-REQUIRED_COLS     = {"id", "imei", "time", "alarm", "video_url"}
-_NIGHT_HOURS      = range(0, 6)
-_NIGHT_CONF_FLOOR = 0.75
-
-
-# ---------------------------------------------------------------------------
-# Heuristic
-# ---------------------------------------------------------------------------
-
-def _apply_night_heuristic(label: str, conf: float, alarm_time_str: str):
-    try:
-        hour = datetime.fromisoformat(alarm_time_str).hour
-    except Exception:
-        try:
-            hour = int(alarm_time_str.split("T")[-1].split(":")[0])
-        except Exception:
-            hour = -1
-
-    night_triggered = (
-        label == "normal"
-        and hour in _NIGHT_HOURS
-        and conf < _NIGHT_CONF_FLOOR
-    )
-    return (label != "normal") or night_triggered, night_triggered
+REQUIRED_COLS = {"id", "imei", "time", "alarm", "video_url"}
 
 
 # ---------------------------------------------------------------------------
@@ -110,13 +87,12 @@ def _run_one(task: dict) -> dict:
     video_path = tmp_dir / f"{row['id']}.mp4"
     result = {
         **row,
-        "label":           None,
-        "confidence":      None,
-        "review_result":   None,
-        "night_triggered": None,
-        "duration_ms":     None,
-        "error":           None,
-        "error_stage":     None,
+        "label":         None,
+        "confidence":    None,
+        "review_result": None,
+        "duration_ms":   None,
+        "error":         None,
+        "error_stage":   None,
     }
     start = time.monotonic()
     stage = "download"
@@ -148,16 +124,11 @@ def _run_one(task: dict) -> dict:
         label    = CLASS_NAMES[cls.item()]
         conf_val = round(conf.item(), 4)
 
-        review_result, night_triggered = _apply_night_heuristic(
-            label, conf_val, row.get("time", "")
-        )
-
         result.update({
-            "label":           label,
-            "confidence":      conf_val,
-            "review_result":   review_result,
-            "night_triggered": night_triggered,
-            "duration_ms":     int((time.monotonic() - start) * 1000),
+            "label":         label,
+            "confidence":    conf_val,
+            "review_result": label != "normal",
+            "duration_ms":   int((time.monotonic() - start) * 1000),
         })
 
     except Exception as exc:
@@ -269,10 +240,9 @@ def main():
 
     # Summary
     total      = len(results)
-    errors     = [r for r in results if r["error"]]
-    ok         = [r for r in results if not r["error"]]
-    reviewed   = [r for r in ok if r["review_result"]]
-    night_hits = [r for r in ok if r["night_triggered"]]
+    errors       = [r for r in results if r["error"]]
+    ok           = [r for r in results if not r["error"]]
+    reviewed     = [r for r in ok if r["review_result"]]
     class_counts: dict = {}
     for r in ok:
         class_counts[r["label"]] = class_counts.get(r["label"], 0) + 1
@@ -285,19 +255,18 @@ def main():
     summary = {
         "input": str(input_path), "model": str(model_path),
         "total": total, "processed": len(ok), "errors": len(errors),
-        "reviewed": len(reviewed), "night_triggered": len(night_hits),
+        "reviewed": len(reviewed),
         "class_counts": class_counts, "error_stages": error_stages,
         "workers": args.workers, "device": args.device, "run_at": ts,
     }
     (output_dir / "summary.json").write_text(json.dumps(summary, indent=2))
 
     print("\n" + "=" * 50)
-    print(f"  Total       : {total}")
-    print(f"  Processed   : {len(ok)}")
-    print(f"  Errors      : {len(errors)}  {error_stages if errors else ''}")
-    print(f"  For review  : {len(reviewed)}  ({len(reviewed)/max(len(ok),1)*100:.1f}%)")
-    print(f"  Night-hour  : {len(night_hits)}")
-    print(f"  Classes     : {class_counts}")
+    print(f"  Total      : {total}")
+    print(f"  Processed  : {len(ok)}")
+    print(f"  Errors     : {len(errors)}  {error_stages if errors else ''}")
+    print(f"  For review : {len(reviewed)}  ({len(reviewed)/max(len(ok),1)*100:.1f}%)")
+    print(f"  Classes    : {class_counts}")
     print(f"\n  Output: {output_dir.resolve()}")
     print("=" * 50)
 

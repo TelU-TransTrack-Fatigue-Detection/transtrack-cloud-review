@@ -2,7 +2,6 @@ import json
 import logging
 import os
 import time
-from datetime import datetime, timezone
 from pathlib import Path
 
 import httpx
@@ -27,13 +26,6 @@ celery_app.conf.update(
     broker_transport_options={"visibility_timeout": 3600},
 )
 
-# --- heuristic thresholds ---
-_NIGHT_HOURS            = range(0, 6)       # 00:00–05:59 local
-_NIGHT_CONF_FLOOR       = 0.75              # "normal" below this at night → review
-_HISTORY_WINDOW_SEC     = 3600             # sliding window for driver history
-_HISTORY_ESCALATE_COUNT = 2               # fatigue events in window before escalation
-_DRIVER_KEY             = "driver_fatigue:{imei}"
-
 _model  = None
 _device = None
 
@@ -48,81 +40,6 @@ def _init_worker(**kwargs):
     _device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     _model  = _load_model(Path(settings.MODEL_PATH), settings.MODEL_NAME, _device)
     logger.info("Worker process ready — model on %s", _device)
-
-
-# ---------------------------------------------------------------------------
-# Driver history helpers (Redis)
-# ---------------------------------------------------------------------------
-
-def _redis_client():
-    import redis as redis_lib
-    return redis_lib.from_url(settings.REDIS_URL)
-
-
-def _record_driver_fatigue(imei: str):
-    try:
-        key = _DRIVER_KEY.format(imei=imei)
-        r   = _redis_client()
-        r.rpush(key, int(time.time()))
-        r.expire(key, _HISTORY_WINDOW_SEC * 2)
-    except Exception as exc:
-        logger.warning("Could not record driver history imei=%s: %s", imei, exc)
-
-
-def _recent_fatigue_count(imei: str) -> int:
-    try:
-        key    = _DRIVER_KEY.format(imei=imei)
-        r      = _redis_client()
-        events = r.lrange(key, 0, -1)
-        cutoff = int(time.time()) - _HISTORY_WINDOW_SEC
-        return sum(1 for ts in events if int(ts) >= cutoff)
-    except Exception as exc:
-        logger.warning("Could not read driver history imei=%s: %s", imei, exc)
-        return 0
-
-
-# ---------------------------------------------------------------------------
-# Heuristics post-processing
-# ---------------------------------------------------------------------------
-
-def _apply_heuristics(label: str, conf: float, imei: str, alarm_time_str: str) -> tuple[bool, dict]:
-    """
-    Returns (review_result, heuristic_meta).
-
-    Rules applied on top of raw model output:
-      1. Night-hour rule  — if model says "normal" with low confidence during 00:00–05:59,
-                            flag for review (eyes_closed events peak in this window).
-      2. Driver-history   — if same IMEI has had >= N fatigue events in the last hour,
-                            treat a borderline "normal" as a review trigger.
-    """
-    night_triggered   = False
-    history_triggered = False
-
-    # parse hour from alarm_time (ISO-8601 or HH:MM:SS prefix)
-    try:
-        hour = datetime.fromisoformat(alarm_time_str).hour
-    except Exception:
-        try:
-            hour = int(alarm_time_str.split("T")[-1].split(":")[0])
-        except Exception:
-            hour = -1
-
-    if label == "normal" and hour in _NIGHT_HOURS and conf < _NIGHT_CONF_FLOOR:
-        night_triggered = True
-        logger.info("Night-hour rule triggered imei=%s hour=%d conf=%.3f", imei, hour, conf)
-
-    recent = _recent_fatigue_count(imei)
-    if label == "normal" and recent >= _HISTORY_ESCALATE_COUNT:
-        history_triggered = True
-        logger.info("History escalation triggered imei=%s recent_events=%d", imei, recent)
-
-    review_result = (label != "normal") or night_triggered or history_triggered
-    return review_result, {
-        "night_rule_triggered":    night_triggered,
-        "history_rule_triggered":  history_triggered,
-        "recent_fatigue_count":    recent,
-        "alarm_hour":              hour if hour >= 0 else None,
-    }
 
 
 # ---------------------------------------------------------------------------
@@ -193,12 +110,7 @@ def process_alarm_task(self, payload_dict: dict):
         conf_val = round(conf.item(), 4)
         duration = int((time.monotonic() - start) * 1000)
 
-        review_result, heuristic_meta = _apply_heuristics(
-            label, conf_val, payload.imei, payload.time
-        )
-
-        if label != "normal":
-            _record_driver_fatigue(payload.imei)
+        review_result = label != "normal"
 
         result = ReviewResult(
             id=payload.id,
@@ -214,7 +126,6 @@ def process_alarm_task(self, payload_dict: dict):
                 "model":    settings.MODEL_NAME,
                 "label":    label,
                 "class_id": cls.item(),
-                **heuristic_meta,
             },
         )
 
@@ -245,9 +156,8 @@ def process_alarm_task(self, payload_dict: dict):
             logger.error("Callback failed after 3 attempts id=%s: %s", payload.id, last_exc)
             _write_error_record(payload_dict, "callback", last_exc)
 
-        logger.info("Done id=%s label=%s conf=%.4f review=%s duration_ms=%d night=%s history=%s",
-                    payload.id, label, conf_val, review_result, duration,
-                    heuristic_meta["night_rule_triggered"], heuristic_meta["history_rule_triggered"])
+        logger.info("Done id=%s label=%s conf=%.4f review=%s duration_ms=%d",
+                    payload.id, label, conf_val, review_result, duration)
 
     except Exception as exc:
         logger.error("Task failed id=%s stage=%s error=%s: %s",
