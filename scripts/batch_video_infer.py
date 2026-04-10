@@ -45,6 +45,22 @@ import torch
 import torch.nn.functional as F
 from tqdm import tqdm
 
+# ---------------------------------------------------------------------------
+# Defaults — override via .env or environment variables
+# ---------------------------------------------------------------------------
+# On a CPU-only machine (e.g. 4-vCPU VM):
+#   BATCH_WORKERS=4   BATCH_DEVICE=cpu
+#
+# After upgrading to a GPU machine:
+#   BATCH_DEVICE=cuda   BATCH_WORKERS=2  (GPU handles parallelism internally)
+#
+# After adding more RAM / vCPUs:
+#   BATCH_WORKERS=8  (or however many cores you have)
+# ---------------------------------------------------------------------------
+_DEFAULT_WORKERS = int(os.getenv("BATCH_WORKERS", os.cpu_count() or 4))
+_DEFAULT_DEVICE  = os.getenv("BATCH_DEVICE", "cpu")
+_DEFAULT_TIMEOUT = int(os.getenv("BATCH_TIMEOUT", "60"))
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(message)s",
@@ -167,12 +183,13 @@ def main():
     parser.add_argument("--input",       required=True)
     parser.add_argument("--model",       default="models/classifier/best_val_f1.pth")
     parser.add_argument("--output-dir",  default="output")
-    parser.add_argument("--device",      default="cpu", choices=["cpu", "cuda"],
-                        help="Inference device (default: cpu)")
-    parser.add_argument("--workers",     type=int, default=os.cpu_count(),
-                        help="Parallel worker processes (default: all CPU cores)")
+    parser.add_argument("--device",      default=_DEFAULT_DEVICE, choices=["cpu", "cuda"],
+                        help=f"Inference device (default: {_DEFAULT_DEVICE}, env: BATCH_DEVICE)")
+    parser.add_argument("--workers",     type=int, default=_DEFAULT_WORKERS,
+                        help=f"Parallel worker processes (default: {_DEFAULT_WORKERS}, env: BATCH_WORKERS)")
     parser.add_argument("--keep-videos", action="store_true")
-    parser.add_argument("--timeout",     type=int, default=60)
+    parser.add_argument("--timeout",     type=int, default=_DEFAULT_TIMEOUT,
+                        help=f"Download timeout in seconds (default: {_DEFAULT_TIMEOUT}, env: BATCH_TIMEOUT)")
     args = parser.parse_args()
 
     if args.device == "cuda" and not torch.cuda.is_available():

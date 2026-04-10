@@ -119,6 +119,44 @@ Output written to `output/batch_<timestamp>/`:
 - `results.csv` — label, confidence, review_result, error per row
 - `summary.json` — totals, class counts, error breakdown
 
+## Scaling the Batch Inference
+
+The batch script reads config from environment variables so you never need to touch the code when hardware changes.
+
+**Current setup (4-vCPU CPU-only VM):**
+```env
+BATCH_WORKERS=4
+BATCH_DEVICE=cpu
+```
+
+**After adding more vCPUs (e.g. upgraded to 8 cores):**
+```env
+BATCH_WORKERS=8
+BATCH_DEVICE=cpu
+```
+
+**After adding a GPU:**
+```env
+BATCH_DEVICE=cuda
+BATCH_WORKERS=2   # GPU handles internal parallelism, fewer processes needed
+```
+
+Set these in your `.env` file — the script picks them up automatically.
+CLI flags always take precedence over env vars if you need a one-off override:
+```bash
+python scripts/batch_video_infer.py --input alarms.csv --workers 8 --device cuda
+```
+
+**Memory guidance (CPU mode):**
+Each worker process loads mediapipe + PyTorch — roughly 700–900 MB per worker.
+Match `BATCH_WORKERS` to available RAM, not just CPU count:
+
+| RAM available | Safe BATCH_WORKERS |
+|---|---|
+| 3–4 GB | 2–4 |
+| 8 GB | 8 |
+| 16 GB | 16 |
+
 ## Tests
 
 ```bash
