@@ -12,10 +12,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-COPY requirements.txt requirements-dev.txt requirements-torch-cpu.txt ./
+COPY requirements.txt requirements-torch-cpu.txt ./
 
 RUN pip install --no-cache-dir -r requirements.txt && \
-    pip install --no-cache-dir -r requirements-dev.txt && \
     pip install --no-cache-dir -r requirements-torch-cpu.txt
 
 COPY . .

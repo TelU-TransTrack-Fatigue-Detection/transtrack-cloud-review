@@ -1,7 +1,7 @@
 @echo off
 setlocal
 
-set ENV_NAME=transtrack_review
+set ENV_NAME=transtrack_test
 set PYTHON_VERSION=3.11
 
 echo =============================================

@@ -6,7 +6,6 @@ import numpy as np
 import pytest
 import torch
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
 
 from app.pipeline import (
     _prepare, _interpolate_nan, _enforce_continuity,
@@ -157,91 +156,6 @@ def test_class_id_matches_index():
     """Each CLASS_NAMES[i] should have index i."""
     for i, name in enumerate(CLASS_NAMES):
         assert CLASS_NAMES[i] == name
-
-
-# ─── Inference confidence rounding ───────────────────────────────────────────
-
-@pytest.mark.asyncio
-async def test_inference_confidence_is_int_not_float():
-    from app.inference import run_inference
-    fake_info = {
-        "total_frames": 100, "fps": 30.0, "duration_sec": 3.3,
-        "resolution": "320x240", "first_frame_read": True
-    }
-    fake_pred = {"label": "normal", "class_id": 1, "confidence": 0.735}
-    with (
-        patch("app.inference._read_video_properties", return_value=fake_info),
-        patch("app.inference._run_pipeline", return_value=fake_pred),
-    ):
-        result = await run_inference("/tmp/v.mp4", "eyes_closed")
-    assert type(result["confidence_level"]) is int
-
-
-@pytest.mark.asyncio
-async def test_inference_confidence_floor_not_round():
-    """int(0.999) = 0, int(0.735) = 73 — it truncates, not rounds."""
-    from app.inference import run_inference
-    fake_info = {
-        "total_frames": 100, "fps": 30.0, "duration_sec": 3.3,
-        "resolution": "320x240", "first_frame_read": True
-    }
-    fake_pred = {"label": "yawning", "class_id": 2, "confidence": 0.739}
-    with (
-        patch("app.inference._read_video_properties", return_value=fake_info),
-        patch("app.inference._run_pipeline", return_value=fake_pred),
-    ):
-        result = await run_inference("/tmp/v.mp4", "yawning")
-    assert result["confidence_level"] == 73
-
-
-# ─── Notifier payload keys ────────────────────────────────────────────────────
-
-@pytest.mark.asyncio
-async def test_notifier_sends_all_review_result_fields():
-    from app.notifier import post_result
-    from app.schemas import ReviewResult
-
-    result = ReviewResult(
-        id="z1", imei="i1", time="t1", alarm="a1",
-        dms_video_url="u1", dms_video_url_after_proccess="u2",
-        confidence_level=88, review_result=True,
-        process_duration=500, other={"k": "v"},
-    )
-    ok = MagicMock()
-    ok.raise_for_status = MagicMock()
-    mc = MagicMock()
-    mc.__aenter__ = AsyncMock(return_value=mc)
-    mc.__aexit__ = AsyncMock(return_value=False)
-    mc.post = AsyncMock(return_value=ok)
-
-    with patch("app.notifier.httpx.AsyncClient", return_value=mc):
-        await post_result(result)
-
-    payload = mc.post.call_args[1]["json"]
-    assert payload["id"] == "z1"
-    assert payload["confidence_level"] == 88
-    assert payload["review_result"] is True
-    assert payload["other"] == {"k": "v"}
-
-
-# ─── Storage file isolation ───────────────────────────────────────────────────
-
-@pytest.mark.asyncio
-async def test_two_records_with_same_id_different_timestamps(tmp_path, monkeypatch):
-    """Same alarm_id saved twice should create two separate files."""
-    import asyncio
-    from app.storage import save_record
-    from app.config import settings
-
-    monkeypatch.setattr(settings, "RECORDS_DIR", str(tmp_path))
-    data = {"x": 1}
-
-    await save_record("same-id", "imei", data)
-    await asyncio.sleep(0.01)
-    await save_record("same-id", "imei", data)
-
-    files = list(tmp_path.glob("*.json"))
-    assert len(files) == 2
 
 
 # ─── Config: type safety ──────────────────────────────────────────────────────

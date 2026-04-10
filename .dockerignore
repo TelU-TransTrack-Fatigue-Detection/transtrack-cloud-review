@@ -14,5 +14,7 @@ models/**/*.onnx
 models/**/*.pt
 data-test-*/
 initial-*/
+dataset*/
 *.mp4
 *.xlsx
+*.npz

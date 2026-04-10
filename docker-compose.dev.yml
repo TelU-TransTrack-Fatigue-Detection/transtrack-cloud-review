@@ -1,0 +1,57 @@
+services:
+  worker:
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      CALLBACK_URL: http://mock-callback:8001/callback
+    volumes:
+      - ./records:/app/records
+      - ./models:/app/models
+      - ./output:/app/output
+
+  mock-callback:
+    build: .
+    command: python mock/callback_server.py
+    ports:
+      - "8001:8001"
+    environment:
+      MOCK_MODE: "200"
+      MOCK_PORT: "8001"
+      LOG_DIR: /app/mock/logs
+    volumes:
+      - ./mock:/app/mock
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  mock-video:
+    build: .
+    command: python mock/video_server.py
+    ports:
+      - "8002:8002"
+    environment:
+      MOCK_VIDEO_PORT: "8002"
+      VIDEO_DIR: /app/mock/videos
+      MOCK_RATE_LIMIT_KBPS: "0"
+    volumes:
+      - ./mock:/app/mock
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  flower:
+    build: .
+    command: >
+      celery -A app.worker.celery_app flower
+      --port=5555
+      --broker=redis://redis:6379/0
+    ports:
+      - "5555:5555"
+    environment:
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      redis:
+        condition: service_healthy
