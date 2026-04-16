@@ -25,8 +25,11 @@ services:
     env_file: .env
     environment:
       REDIS_URL: redis://redis:6379/0
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-https://cloud.transtrack.co}
+      RECORD_TTL_SECONDS: ${RECORD_TTL_SECONDS:-1800}
+      VIDEO_TTL_SECONDS: ${VIDEO_TTL_SECONDS:-2700}
     volumes:
-      - ./records:/app/records
+      - records:/app/records
       - ./models:/app/models
       - ./output:/app/output
     depends_on:
@@ -57,8 +60,10 @@ services:
     env_file: .env
     environment:
       REDIS_URL: redis://redis:6379/0
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-https://cloud.transtrack.co}
+      VIDEO_TTL_SECONDS: ${VIDEO_TTL_SECONDS:-2700}
     volumes:
-      - ./records:/app/records
+      - records:/app/records
       - ./models:/app/models
       - ./output:/app/output
     depends_on:
@@ -70,7 +75,7 @@ services:
       timeout: 10s
       start_period: 60s
       retries: 3
-    mem_limit: 2g
+    mem_limit: 3g
     ulimits:
       nofile:
         soft: 65536
@@ -78,3 +83,4 @@ services:
 
 volumes:
   redis_data:
+  records:    # named volume shared between api and worker

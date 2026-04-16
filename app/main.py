@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, status
+from fastapi.responses import FileResponse
 
 from .config import settings
 from .model_manager import ensure_all_models
@@ -14,19 +15,25 @@ from .worker import process_alarm_task
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
 
-_RECORD_TTL_SECONDS = 30 * 60
-
-
 async def _cleanup_loop():
     while True:
         await asyncio.sleep(60)
-        now = time.time()
+        now         = time.time()
         records_dir = Path(settings.RECORDS_DIR)
+
         for f in records_dir.glob("*.json"):
             try:
-                if now - f.stat().st_mtime > _RECORD_TTL_SECONDS:
+                if now - f.stat().st_mtime > settings.RECORD_TTL_SECONDS:
                     f.unlink()
                     logger.info("Expired record deleted: %s", f.name)
+            except Exception:
+                pass
+
+        for f in (records_dir / "tmp").glob("*.mp4"):
+            try:
+                if now - f.stat().st_mtime > settings.VIDEO_TTL_SECONDS:
+                    f.unlink()
+                    logger.info("Expired video deleted: %s", f.name)
             except Exception:
                 pass
 
@@ -59,6 +66,22 @@ def _queue_depth() -> int:
 @app.get("/health", status_code=status.HTTP_200_OK)
 async def health():
     return {"status": "ok", "queue_depth": _queue_depth()}
+
+
+@app.get("/videos/{alarm_id}", status_code=status.HTTP_200_OK)
+async def get_video(alarm_id: str):
+    """Serve processed video for TransTrack review (available for 45 min after processing)."""
+    video_path = Path(settings.RECORDS_DIR) / "tmp" / f"{alarm_id}.mp4"
+    if not video_path.exists():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Video not found or already expired",
+        )
+    return FileResponse(
+        path=str(video_path),
+        media_type="video/mp4",
+        filename=f"{alarm_id}.mp4",
+    )
 
 
 @app.post("/review", status_code=status.HTTP_202_ACCEPTED)
